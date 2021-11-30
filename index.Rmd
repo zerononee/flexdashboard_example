@@ -1,0 +1,170 @@
+---
+title: "Casino status"
+  
+output:
+  flexdashboard::flex_dashboard:
+    source_code: embed
+    theme: readable
+runtime: shiny
+---
+
+
+```{r setup, include=FALSE}
+if (!require(pacman)) {install.packages("pacman")
+  library(pacman)}
+pacman::p_load("flexdashboard","ggplot2","plotly","shiny","plyr","dplyr",
+               "plotly","tm", "crosstalk","readxl","crosstalk", "readxl", "rnaturalearth", "wbstats", "leaflet", "DT", "knitr","shiny","RColorBrewer")
+
+```
+
+```{r include=FALSE}
+# file.choose()
+DATA3 = read_excel("C:\\Users\\zeron\\Desktop\\Notebook fill\\Notebook fill\\마케팅기말과제\\sales4.xlsx")
+DATA2 = read_excel("C:\\Users\\zeron\\Desktop\\Notebook fill\\Notebook fill\\마케팅기말과제\\sales.xlsx")
+DATA = read_excel("C:\\Users\\zeron\\Desktop\\Notebook fill\\Notebook fill\\마케팅기말과제\\test1129.xlsx")
+```
+
+```{r include=FALSE}
+Sales_Year = DATA2$Year
+Sales_1 = DATA2$`카지노 매출액`
+Sales_2 = DATA2$`외국인 전용 카지노`
+Sales_3 = DATA2$강원랜드
+Visit_Year = DATA2$Year2
+VIsit_Total = DATA2$`전국(명)`
+```
+
+매출액
+=================================
+
+
+```{r}
+## app.R ##
+library(shinydashboard)
+
+ui <- bootstrapPage(
+  tags$style(type = "text/css", "html, body {width:100%;height:100%}"),
+  leafletOutput("map", width = "100%", height = "100%"),
+  absolutePanel(top = 10, right = 10, sliderInput("range", "Magnitudes", min(DATA$mag), max(DATA$mag), value = range(DATA$mag), step = 0.1
+                ), selectInput("colors", "Color Scheme", rownames(subset(brewer.pal.info, category %in% c("seq", "div")))
+                ), checkboxInput("legend", "Show legend", TRUE)))
+
+server <- function(input, output, session) {
+  
+  # Reactive expression for the data subsetted to what the user selected
+  filteredData <- reactive({DATA[DATA$mag >= input$range[1] & DATA$mag <= input$range[2],]})
+  
+  # This reactive expression represents the palette function,
+  # which changes as the user makes selections in UI.
+  colorpal <- reactive({colorNumeric(input$colors, DATA$mag)})
+  
+
+  
+  output$map <- renderLeaflet({
+    # Use leaflet() here, and only include aspects of the map that
+    # won't need to change dynamically (at least, not unless the
+    # entire map is being torn down and recreated).
+    leaflet(DATA) %>% addTiles() %>%
+      fitBounds(~min(long), ~min(lat), ~max(long), ~max(lat))
+  })
+  
+  # Incremental changes to the map (in this case, replacing the
+  # circles when a new color is chosen) should be performed in
+  # an observer. Each independent set of things that can change
+  # should be managed in its own observer.
+  observe({
+    pal <- colorpal()
+    
+    leafletProxy("map", data = filteredData()) %>%
+      clearShapes() %>%
+      addCircles(radius = ~10^mag/10, weight = 1, color = "#777777",
+                 fillColor = ~pal(mag), fillOpacity = 0.7, popup = ~paste(mag)
+      )
+  })
+  
+  # Use a separate observer to recreate the legend as needed.
+  observe({
+    proxy <- leafletProxy("map", data = DATA)
+    
+    # Remove any existing legend, and only if the legend is
+    # enabled, create a new one.
+    proxy %>% clearControls()
+    if (input$legend) {
+      pal <- colorpal()
+      proxy %>% addLegend(position = "bottomright",
+                          pal = pal, values = ~mag
+      )
+    }
+  })
+}
+
+shinyApp(ui, server)
+```
+  
+
+
+row {data-width=400}
+-------------------------------------
+
+### 외전 카지노 매출액 비중 추이
+
+```{r}
+pp = ggplot(DATA2) +
+  geom_line(aes(x=Sales_Year,y=Sales_2),group = 1 , col ='red') +
+  geom_line(aes(x=Sales_Year,y=Sales_3),group = 1 , col ='black') +
+  xlab("년도") + ylab("매출액 비율(%)")
+ ggplotly(pp)
+ 
+```
+
+row {data-width=400}
+-------------------------------------
+
+### 카지노 매출액
+
+```{r}
+p = ggplot(DATA2) +
+  geom_line(aes(x=Sales_Year,y=Sales_1),group = 1 , col ='red') +
+  xlab("년도") + ylab("금액(조원)")
+ ggplotly(p)
+
+```
+
+<br>
+
+방문객
+=================================
+
+column {.tabset}
+-----------------------------
+### 지역별 방문객
+
+```{r}
+
+# generally speaking, use a "unique" key for filter, 
+# especially when you have multiple filters!
+#DATA = read_excel("C:/Users/Song/Desktop/sales3.xlsx")
+tx <- highlight_key(DATA3)
+gg <- ggplot(tx) + geom_line(aes(year, median, group = city, color = city))
+filter <- bscols(
+  filter_select("id", "Select a city", tx, ~city),
+  ggplotly(gg, dynamicTicks = TRUE),
+  widths = c(12, 12)
+)
+
+tx2 <- highlight_key(DATA3, ~city, "Select a city")
+gg <- ggplot(tx2) + geom_line(aes(year, median, group = city, color = city))
+select <- highlight(
+  ggplotly(gg, tooltip = "city"), 
+  selectize = TRUE, persistent = TRUE
+)
+
+bscols(filter, select)
+```
+
+### 전체 방문객
+```{r}
+ppp = ggplot(DATA2) +
+  geom_area(aes(x=Visit_Year,y=VIsit_Total), group = 1, fill = "lightblue") +
+  xlab("년도") + ylab("방문객 수(명)")
+ ggplotly(ppp)
+```
